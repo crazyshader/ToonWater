@@ -42,6 +42,9 @@ Shader "Hidden/WaterMaskMapExportDepth" {
 		half4 frag(v2f i) : COLOR
 		{
 			float depth = Linear01Depth(SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(i.scrPos)));
+			#if defined(UNITY_REVERSED_Z)
+				depth = 1 - depth;
+			#endif
 			depth = saturate(depth * _DepthScale);
 			return float4(depth, depth, depth, 1.0f);
 		}

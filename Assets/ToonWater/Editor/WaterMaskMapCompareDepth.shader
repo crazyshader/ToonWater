@@ -40,16 +40,15 @@ Shader "Hidden/WaterMaskMapCompareDepth" {
 			UNITY_INITIALIZE_OUTPUT(v2f, o);
 			o.pos = UnityObjectToClipPos (v.vertex);			
 			o.projPos = ComputeScreenPos (o.pos);
-			COMPUTE_EYEDEPTH(o.projPos.z);
 
  		 	return o;
  		}
 
 		half4 frag( v2f i ) : SV_Target
 		{
-			float sceneZ = 1-Linear01Depth (SAMPLE_DEPTH_TEXTURE_PROJ(_SceneDepthTexture, UNITY_PROJ_COORD(i.projPos)));
-			float waterZ = 1-Linear01Depth (SAMPLE_DEPTH_TEXTURE_PROJ(_WaterDepthTexture, UNITY_PROJ_COORD(i.projPos)));
-			float depth = saturate (1-_DepthFactor *(sceneZ-waterZ));
+			float sceneZ = Linear01Depth (SAMPLE_DEPTH_TEXTURE_PROJ(_SceneDepthTexture, UNITY_PROJ_COORD(i.projPos)));
+			float waterZ = Linear01Depth (SAMPLE_DEPTH_TEXTURE_PROJ(_WaterDepthTexture, UNITY_PROJ_COORD(i.projPos)));
+			float depth = saturate (1-_DepthFactor *(waterZ-sceneZ));
 			return fixed4(depth, depth, depth, 1);
    		}
 
