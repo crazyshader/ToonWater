@@ -1,9 +1,10 @@
-﻿Shader "SP/Water/V1/ToonWater Style2"
+﻿
+Shader "SP/Water/V2/ToonWater"
 {
 	Properties
     {
-		[Header(Debug)]
-		[Toggle(_DEBUG_MODE)] _Debug_Mode("Use Debug Mode?", float) = 0
+		[Header(Mode)]
+		[Toggle(_REALTIME_MODE)] _Realtime_Mode("Use RealTime Mode?", float) = 0
 
 		[Header(Wave)]
 		_WaveScale ("Wave Scale", float) = 0.1
@@ -31,6 +32,7 @@
     }
 
 	CGINCLUDE
+	#include "UnityCG.cginc"
 
     struct a2v
     {
@@ -42,13 +44,10 @@
     {
         float4 vertex : SV_POSITION;
         float2 texcoord : TEXCOORD0;
-        float4 scrPos : TEXCOORD1;
-		float2 foamuv : TEXCOORD2;
+		float4 projPos : TEXCOORD1;
     };
 
-#if _DEBUG_MODE
-    uniform sampler2D_float _CameraDepthTexture;
-#endif
+	sampler2D_float _DepthTexture;
 
     uniform float _WaveScale;
     uniform float _WaveStrength;
@@ -82,6 +81,13 @@
 		return y;
 	}
 
+	float GetWaterDepth(v2f i)
+	{
+		float sceneZ = LinearEyeDepth (SAMPLE_DEPTH_TEXTURE_PROJ(_DepthTexture, UNITY_PROJ_COORD(i.projPos)));
+		float partZ = i.projPos.z;
+		return saturate (_DepthScale * abs(sceneZ-partZ));
+	}
+
 	ENDCG
 
     SubShader
@@ -92,35 +98,33 @@
 		Pass
         {
             Blend SrcAlpha OneMinusSrcAlpha
+			ZWrite Off
 
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             
-			#pragma shader_feature _DEBUG_MODE
-
-            #include "UnityCG.cginc"
+			#pragma shader_feature _REALTIME_MODE
 
             v2f vert (a2v v)
             {
                 v2f o;
-
+				UNITY_INITIALIZE_OUTPUT(v2f, o);
 				v.vertex.y += _WaveStrength * calculateSurface(v.vertex.x, v.vertex.z, _WaveScale);
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.scrPos = ComputeScreenPos(o.vertex);
-                COMPUTE_EYEDEPTH(o.scrPos.z);
+
+                o.projPos = ComputeScreenPos(o.vertex);
+                COMPUTE_EYEDEPTH(o.projPos.z);
+
 				o.texcoord = v.texcoord;
-				float4 wpos = mul (unity_ObjectToWorld, v.vertex);
-				o.foamuv = 7.0f * wpos.xz + 0.05 * float2(_SinTime.w, _SinTime.w);
 
                 return o;
             }
             
             fixed4 frag (v2f i) : COLOR
             {
-				#if _DEBUG_MODE
-					float sceneZ= LinearEyeDepth (SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(i.scrPos)));
-					float depth = saturate(_DepthScale * (sceneZ - i.scrPos.z));
+				#if _REALTIME_MODE				
+					float depth = GetWaterDepth(i);
 				#else
 					// On D3D when AA is used, the main texture and scene depth texture
 					// will come out in different vertical orientations.
@@ -168,22 +172,23 @@
         Pass
         {
             Blend SrcAlpha OneMinusSrcAlpha
+			ZWrite Off
 
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             
-			#pragma shader_feature _DEBUG_MODE
-
-            #include "UnityCG.cginc"
+			#pragma shader_feature _REALTIME_MODE
 
             v2f vert (a2v v)
             {
                 v2f o;
 				UNITY_INITIALIZE_OUTPUT(v2f, o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.scrPos = ComputeScreenPos(o.vertex);
-                COMPUTE_EYEDEPTH(o.scrPos.z);
+
+                o.projPos = ComputeScreenPos(o.vertex);
+                COMPUTE_EYEDEPTH(o.projPos.z);
+
 				o.texcoord = v.texcoord;
 
                 return o;
@@ -191,9 +196,8 @@
             
             fixed4 frag (v2f i) : COLOR
             {
-				#if _DEBUG_MODE
-					float sceneZ= LinearEyeDepth (SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(i.scrPos)));
-					float depth = saturate(_DepthScale * (sceneZ - i.scrPos.z));
+				#if _REALTIME_MODE
+					float depth = GetWaterDepth(i);
 				#else
 					float2 depthUV = i.texcoord;
 					//#if UNITY_UV_STARTS_AT_TOP
@@ -232,13 +236,12 @@
         Pass
         {
             Blend SrcAlpha OneMinusSrcAlpha
+			ZWrite Off
 
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             
-			#pragma shader_feature _DEBUG_MODE
-
             #include "UnityCG.cginc"
 
             v2f vert (a2v v)
@@ -253,19 +256,23 @@
             
             fixed4 frag (v2f i) : COLOR
             {
+				float depth = 1;
 				float4 flowUV = float4(1, 1, 0.6, 0.6) * i.texcoord.xyxy + _WaveSpeedx1y1x2y2 * _Time.r;
                 float4 height1 = tex2D(_WaveMap,TRANSFORM_TEX(flowUV.rg, _WaveMap));
                 float4 height2 = tex2D(_WaveMap,TRANSFORM_TEX(flowUV.ba, _WaveMap));
                 float3 height = saturate(height1.rgb + height2.rgb) * 0.25;
+
 				float3 temp = 1.0 - floor(height * 4) * 0.33;
+				float4 middleDeepColor = lerp(_ShallowWaterColor, _DeepWaterColor, saturate(depth/_DeepWaterDepth));
+				float4 edgeMiddleColor = lerp(float4(1,1,1,0), middleDeepColor, saturate(depth/_ShallowWaterDepth));
+                float4 diffuseColor = 1.0 - (1.0 - edgeMiddleColor) * float4(temp, 1);
 
                 float3 lightDirection = normalize(_CustomLightDir.xyz);
                 float NdotL = max(0.0,dot( float3(0,1,0), lightDirection ));
                 float3 directDiffuse = NdotL * _CustomLightColor.xyz * _CustomLightIntensity;
-				float3 diffuseColor = (directDiffuse + UNITY_LIGHTMODEL_AMBIENT.rgb);
-				diffuseColor *= (_DeepWaterColor.rgb+_ShallowWaterColor) * 0.5;
+                diffuseColor.rgb = (directDiffuse + UNITY_LIGHTMODEL_AMBIENT.rgb) * diffuseColor.rgb;
 
-				return fixed4(diffuseColor, saturate(temp.r));
+				return diffuseColor;
             }
 
             ENDCG

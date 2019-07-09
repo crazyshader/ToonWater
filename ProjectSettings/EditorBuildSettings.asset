@@ -6,6 +6,6 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/ToonWater.unity
+    path: Assets/ToonWater-V2/Scenes/ToonWater-V2.unity
     guid: a848b3f6e55344563ab5653da87844ce
   m_configObjects: {}

@@ -1,5 +1,4 @@
-﻿
-Shader "SP/Water/ToonWater"
+﻿Shader "SP/Water/V1/ToonWater"
 {
 	Properties
     {
